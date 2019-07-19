@@ -5,6 +5,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.firefox.firefox_binary import FirefoxBinary
+import platform
+import os, sys, sqlite3
 
 def wait_until_clickable(driver, xpath=None, class_name=None,
                          duration=10000, frequency=0.01):
@@ -28,10 +30,33 @@ def wait_until_visible(driver, xpath=None, class_name=None,
                       duration,
                       frequency).until(EC.visibility_of_element_located((By.CLASS_NAME, class_name)))
 
-# windows firefox - geckodriver boiler code
-binary = FirefoxBinary("C:\\Program Files\\Mozilla Firefox\\firefox.exe")
-driver = webdriver.Firefox(firefox_binary=binary,
-                           executable_path=r"C:\\geckodriver.exe")
+def set_driver():
+    if platform.system() == "Windows":
+        binary = FirefoxBinary("C:\\Program Files\\Mozilla Firefox\\firefox.exe")
+        return webdriver.Firefox(firefox_binary=binary,
+                                   executable_path=r"C:\\geckodriver.exe")
+    elif platform.system() == "Linux":
+        return webdriver.Firefox()
+
+
+# def start_db():
+#     connection = sqlite3.connect("slub.db")
+#     cursor = connection.cursor()
+#     sql = "CREATE TABLE IF NOT EXISTS books("\
+#         "barcode INTEGER PRIMARY KEY, title TEXT, author TEXT, enddate TEXT, \
+#          extends INTEGER, comment TEXT)"
+#     cursor.execute(sql)
+#     connection.commit()
+#     connection.close()
+#
+# start_db()
+
+
+# @todo Add Notification
+# @body database is too much, better would be a instant notficaiton system for example: telegram, google calendar, ticktick
+
+
+driver = set_driver()
 
 driver.get("https://www.slub-dresden.de/Shibboleth.sso/Login?target=https%3A%2F%2Fwww.slub-dresden.de%2Fkatalog%2Fmein-konto%2F%3F")
 
@@ -62,6 +87,7 @@ def get_status(text, counts):
     elif text == "Exemplar ist vorgemerkt":
         return "zurückbringen"
 
+
 for row in rows[1:]:
     #col = row.find_elements_by_tag_name("td")
     row_data = row.find_elements_by_tag_name("td")
@@ -71,4 +97,5 @@ for row in rows[1:]:
 
     print(end_date, name, extend)
 
+driver.close()
 
