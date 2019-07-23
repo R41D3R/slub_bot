@@ -81,11 +81,11 @@ def set_ticktick_reminder(driver, msg, date):
     driver.find_element_by_xpath("//a[@title='Google']").click()
     username_field = "//input[@id='identifierId']"
     wait_until_visible(driver, xpath=username_field)
-    driver.find_element_by_xpath(username_field).send_keys("juli23072")
+    driver.find_element_by_xpath(username_field).send_keys(config.google_username)
     driver.find_element_by_xpath("//span[@class='CwaK9']").click()
     pw_field = "//input[@type='password']"
     wait_until_visible(driver, xpath=pw_field)
-    driver.find_element_by_xpath(pw_field).send_keys("4r4rt56freeJ/*")
+    driver.find_element_by_xpath(pw_field).send_keys(config.google_password)
     driver.find_element_by_xpath("//span[@class='CwaK9']").click()
 
     task_list_content = "//div[@id='task-list-content']"
@@ -103,9 +103,9 @@ def get_all_books(driver):
         "https://www.slub-dresden.de/Shibboleth.sso/Login?target=https%3A%2F%2Fwww.slub-dresden.de%2Fkatalog%2Fmein-konto%2F%3F")
 
     username_field = driver.find_element_by_id('username')
-    username_field.send_keys("4298969")
+    username_field.send_keys(config.slub_username)
     password_field = driver.find_element_by_id("password")
-    password_field.send_keys("4r4rt56freeJ/")
+    password_field.send_keys(config.slub_password)
     driver.find_element_by_name("_eventId_proceed").click()
 
     book_table = "//table[@summary='Ausgeliehene Medien']"
