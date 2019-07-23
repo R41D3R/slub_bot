@@ -55,7 +55,7 @@ def set_driver():
 def get_file(file):
     try:
         with open(f"{file}.txt", 'r') as file:
-            return file.readlines()
+            return file.read().split("\n")
     except IOError:
         return []
 
@@ -117,6 +117,7 @@ def set_ticktick_reminder(driver):
         dateformat = reminder[1].split(" ")
         dateformat = dateformat[0] + " " + dateformat[1][:3] + "M"
         driver.find_elements_by_tag_name("textarea")[1].send_keys("#book", Keys.ENTER, reminder[0] + " " + dateformat, Keys.ENTER)
+        print("reminded")
         time.sleep(2)
 
 
@@ -174,6 +175,7 @@ def get_all_books(driver):
         elif book_data[6].text == "Maximale Anzahl an Verlängerungen erreicht.":
             try:
                 if (datetime.datetime.strptime(book_data[4].find_element_by_xpath(".//span[@class='hidden']").get_attribute("textContent"), "%Y-%m-%d") - datetime.datetime.today()).days + 1 <= 14:
+                    print(reminded)
                     if book_data[2].text not in reminded:
                         reminder_list.append([f"m.v.e. {book_data[2].text}", f"{book_data[4].text}"])
                         reminded.append(book_data[2].text)
