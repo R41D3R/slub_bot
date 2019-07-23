@@ -10,9 +10,12 @@ import datetime
 import time
 import os, sys, sqlite3
 from selenium.common.exceptions import *
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.firefox.options import Options
 
 # crededentials
 import config
+
 
 def wait_until_clickable(driver, xpath=None, class_name=None,
                          duration=10000, frequency=0.01):
@@ -25,6 +28,7 @@ def wait_until_clickable(driver, xpath=None, class_name=None,
                       duration,
                       frequency).until(EC.element_to_be_clickable((By.CLASS_NAME, class_name)))
 
+
 def wait_until_visible(driver, xpath=None, class_name=None,
                        duration=10000, frequency=0.01):
     if xpath:
@@ -36,30 +40,50 @@ def wait_until_visible(driver, xpath=None, class_name=None,
                       duration,
                       frequency).until(EC.visibility_of_element_located((By.CLASS_NAME, class_name)))
 
+
 def set_driver():
-    # @todo test headless mode
+    options = Options()
+    options.headless = True
     if platform.system() == "Windows":
         binary = FirefoxBinary("C:\\Program Files\\Mozilla Firefox\\firefox.exe")
-        return webdriver.Firefox(firefox_binary=binary,
+        return webdriver.Firefox(options=options, firefox_binary=binary,
                                    executable_path=r"C:\\geckodriver.exe")
     elif platform.system() == "Linux":
-        return webdriver.Firefox()
+        return webdriver.Firefox(options=options)
 
 
-
-def get_reserved():
+def get_file(file):
     try:
-        with open("reserved.txt", 'r') as file:
-            return file.readlines().split()
+        with open(f"{file}.txt", 'r') as file:
+            return file.readlines()
     except IOError:
-        file = open("reserved.txt", 'w')
-        file.close()
         return []
 
+def test_reserved(title):
+    for book in reserved_list:
+        if title == book:
+            return True
+    return False
 
-# @todo update reserve list method
-# @body merge with get_reserved and add the method in the pipeline
+
 def update_reserved_list(books):
+    global reminder_list
+    global reserved_list
+    new_reservedlist = []
+    for book in books:
+        book_data = book.find_elements_by_tag_name("td")
+        title = book_data[2].text
+        extend = book_data[6].text
+        enddate = book_data[4].text
+        if extend == "Exemplar ist vorgemerkt":
+            new_reservedlist.append(title)
+            if not test_reserved(title):
+                reminder_list.append([f"{title} vorg. für", f"{enddate}"])
+
+    reserved_list = new_reservedlist
+    with open("reserved.txt", "w") as file:
+        for book in reserved_list:
+            file.write(book + "\n")
     # get_reserved() -> update -> write
     # delete lines (books) that are no longer in the book_list
     # add books that are not in the reserved list -> notification with enddate
@@ -67,7 +91,7 @@ def update_reserved_list(books):
     pass
 
 
-def set_ticktick_reminder(driver, msg, date):
+def set_ticktick_reminder(driver):
 
     driver.get("https://www.ticktick.com/")
 
@@ -88,9 +112,12 @@ def set_ticktick_reminder(driver, msg, date):
     driver.find_element_by_xpath("//a[@projectid='today']").click()
 
     time.sleep(2)
-    from selenium.webdriver.common.keys import Keys
-    driver.find_elements_by_tag_name("textarea")[1].\
-        send_keys("#book", Keys.ENTER, msg + " " + date, Keys.ENTER)
+    global reminder_list
+    for reminder in reminder_list:
+        dateformat = reminder[1].split(" ")
+        dateformat = dateformat[0] + " " + dateformat[1][:3] + "M"
+        driver.find_elements_by_tag_name("textarea")[1].send_keys("#book", Keys.ENTER, reminder[0] + " " + dateformat, Keys.ENTER)
+        time.sleep(2)
 
 
 def get_all_books(driver):
@@ -102,6 +129,8 @@ def get_all_books(driver):
         rows = table.find_elements_by_tag_name("tr")
         print(f"Recieved {len(rows)-1} books.")
         return rows[1:]
+
+    global reminder_list
     driver.get(
         "https://www.slub-dresden.de/Shibboleth.sso/Login?target=https%3A%2F%2Fwww.slub-dresden.de%2Fkatalog%2Fmein-konto%2F%3F")
 
@@ -111,21 +140,29 @@ def get_all_books(driver):
     password_field.send_keys(config.slub_password)
     driver.find_element_by_name("_eventId_proceed").click()
 
+    reminded = get_file("reminded")
 
     books = get_books(driver)
+    book_titles = [book.find_elements_by_tag_name("td")[2].text for book in books]
+    for title in reminded:
+        if title not in book_titles:
+            reminded.remove(title)
+
     extended_ones = 0
     for book in books:
         book_data = book.find_elements_by_tag_name("td")
         print(book_data[2].text)
+
         if book_data[6].text == "":
+            if book_data[2].text in reminded:
+                reminded.remove(book_data[2].text)
+            if test_reserved(book_data[2].text):
+                reminder_list.append([f"n.m.v., {book_data[2].text} ({book_data[5].text}), ", f"{book_data[4].text}"])
             due_box = book_data[6].find_element_by_xpath(".//input[@type='checkbox']")
             due_days = int(due_box.get_attribute("data-days-to-due"))
             if due_days <= 3:
                 due_box.click()
                 select_button = "//div[@class='ui-dialog-buttonset']/button[1]"
-                #time.sleep(2)
-                #wait_until_clickable(driver, xpath=select_button)
-                #driver.find_element_by_xpath(select_button).click()
                 extended_ones += 1
                 print("selected one more")
                 time.sleep(1)
@@ -134,16 +171,29 @@ def get_all_books(driver):
                         driver.find_element_by_xpath(select_button).click()
                 except NoSuchElementException:
                     pass
+        elif book_data[6].text == "Maximale Anzahl an Verlängerungen erreicht.":
+            try:
+                if (datetime.datetime.strptime(book_data[4].find_element_by_xpath(".//span[@class='hidden']").get_attribute("textContent"), "%Y-%m-%d") - datetime.datetime.today()).days + 1 <= 14:
+                    if book_data[2].text not in reminded:
+                        reminder_list.append([f"m.v.e. {book_data[2].text}", f"{book_data[4].text}"])
+                        reminded.append(book_data[2].text)
+            except ValueError:
+                print("error")
 
     if extended_ones > 0:
         wait_until_clickable(driver, xpath="//input[@id='btnSubmitIssued']", duration=3)
-        #driver.find_element_by_xpath("//input[@id='btnSubmitIssued']").click()
+        driver.find_element_by_xpath("//input[@id='btnSubmitIssued']").click()
 
+
+    with open("reminded.txt", "w") as file:
+        for book in reminded:
+            file.write(book + "\n")
+
+    print(reminded)
     return get_books(driver)
 
 
 def get_status(text, counts):
-    status = ""
     if text == "Maximale Anzahl an Verlängerungen erreicht.":
         return "Maximale verlängerungen"
     elif text == "":
@@ -162,6 +212,8 @@ def print_all_books(books):
         print(end_date, name, extend)
 
 
+reserved_list = get_file("reserved")
+reminder_list = []
 driver = set_driver()
 
 books = get_all_books(driver)
@@ -169,13 +221,9 @@ books = get_all_books(driver)
 
 print_all_books(books)
 
-# update_reserved_list(books)
+update_reserved_list(books)
 
-# todo notification for books where enddate = date + 14
-# @ body notification for every book that:
-#       14 days in advance (if it can no longer be extended, only not
-#           reserved ones)
-
-
-#driver.close()
+print(reminder_list)
+set_ticktick_reminder(driver)
+driver.quit()
 
