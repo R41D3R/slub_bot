@@ -6,8 +6,12 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.firefox.firefox_binary import FirefoxBinary
 import platform
+import datetime
+import time
 import os, sys, sqlite3
-# @todo refactor for .gitignore crededentials
+from selenium.common.exceptions import *
+
+# crededentials
 import config
 
 def wait_until_clickable(driver, xpath=None, class_name=None,
@@ -41,15 +45,6 @@ def set_driver():
     elif platform.system() == "Linux":
         return webdriver.Firefox()
 
-
-def get_status(text, counts):
-    status = ""
-    if text == "Maximale Anzahl an Verlängerungen erreicht.":
-        return "Maximale verlängerungen"
-    elif text == "":
-        return f"{counts} mal verlängert"
-    elif text == "Exemplar ist vorgemerkt":
-        return "zurückbringen"
 
 
 def get_reserved():
@@ -91,7 +86,7 @@ def set_ticktick_reminder(driver, msg, date):
     task_list_content = "//div[@id='task-list-content']"
     wait_until_visible(driver, task_list_content)
     driver.find_element_by_xpath("//a[@projectid='today']").click()
-    import time
+
     time.sleep(2)
     from selenium.webdriver.common.keys import Keys
     driver.find_elements_by_tag_name("textarea")[1].\
@@ -99,6 +94,14 @@ def set_ticktick_reminder(driver, msg, date):
 
 
 def get_all_books(driver):
+    def get_books(driver):
+        book_table = "//table[@summary='Ausgeliehene Medien']"
+        wait_until_visible(driver=driver, xpath=book_table)
+
+        table = driver.find_element_by_xpath(book_table)
+        rows = table.find_elements_by_tag_name("tr")
+        print(f"Recieved {len(rows)-1} books.")
+        return rows[1:]
     driver.get(
         "https://www.slub-dresden.de/Shibboleth.sso/Login?target=https%3A%2F%2Fwww.slub-dresden.de%2Fkatalog%2Fmein-konto%2F%3F")
 
@@ -108,16 +111,46 @@ def get_all_books(driver):
     password_field.send_keys(config.slub_password)
     driver.find_element_by_name("_eventId_proceed").click()
 
-    book_table = "//table[@summary='Ausgeliehene Medien']"
-    wait_until_visible(driver=driver, xpath=book_table)
 
-    #
-    table = driver.find_element_by_xpath(book_table)
-    rows = table.find_elements_by_tag_name("tr")
-    print(f"Recieved {len(rows)-1} books.")
+    books = get_books(driver)
+    extended_ones = 0
+    for book in books:
+        book_data = book.find_elements_by_tag_name("td")
+        print(book_data[2].text)
+        if book_data[6].text == "":
+            due_box = book_data[6].find_element_by_xpath(".//input[@type='checkbox']")
+            due_days = int(due_box.get_attribute("data-days-to-due"))
+            if due_days <= 3:
+                due_box.click()
+                select_button = "//div[@class='ui-dialog-buttonset']/button[1]"
+                #time.sleep(2)
+                #wait_until_clickable(driver, xpath=select_button)
+                #driver.find_element_by_xpath(select_button).click()
+                extended_ones += 1
+                print("selected one more")
+                time.sleep(1)
+                try:
+                    if EC.element_to_be_clickable((By.XPATH, select_button)):
+                        driver.find_element_by_xpath(select_button).click()
+                except NoSuchElementException:
+                    pass
 
-    # @todo Extend books 3 days before enddate
-    return rows[1:]
+    if extended_ones > 0:
+        wait_until_clickable(driver, xpath="//input[@id='btnSubmitIssued']", duration=3)
+        #driver.find_element_by_xpath("//input[@id='btnSubmitIssued']").click()
+
+    return get_books(driver)
+
+
+def get_status(text, counts):
+    status = ""
+    if text == "Maximale Anzahl an Verlängerungen erreicht.":
+        return "Maximale verlängerungen"
+    elif text == "":
+        return f"{counts} mal verlängert"
+    elif text == "Exemplar ist vorgemerkt":
+        return "zurückbringen"
+
 
 def print_all_books(books):
     for book in books:
@@ -128,9 +161,12 @@ def print_all_books(books):
 
         print(end_date, name, extend)
 
+
 driver = set_driver()
 
 books = get_all_books(driver)
+
+
 print_all_books(books)
 
 # update_reserved_list(books)
@@ -141,5 +177,5 @@ print_all_books(books)
 #           reserved ones)
 
 
-driver.close()
+#driver.close()
 
